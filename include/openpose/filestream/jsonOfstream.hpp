@@ -1,18 +1,17 @@
-#ifndef OPENPOSE__FILESTREAM__JSON_OFSTREAM_HPP
-#define OPENPOSE__FILESTREAM__JSON_OFSTREAM_HPP
+#ifndef OPENPOSE_FILESTREAM_JSON_OFSTREAM_HPP
+#define OPENPOSE_FILESTREAM_JSON_OFSTREAM_HPP
 
 #include <fstream> // std::ofstream
-#include <string>
-#include "../utilities/macros.hpp"
+#include <openpose/core/common.hpp>
 
 namespace op
 {
-    class JsonOfstream
+    class OP_API JsonOfstream
     {
     public:
         explicit JsonOfstream(const std::string& filePath, const bool humanReadable = true);
 
-        ~JsonOfstream();
+        virtual ~JsonOfstream();
 
         void objectOpen();
 
@@ -21,6 +20,8 @@ namespace op
         void arrayOpen();
 
         void arrayClose();
+
+        void version(const std::string& version);
 
         void key(const std::string& string);
 
@@ -47,4 +48,4 @@ namespace op
     };
 }
 
-#endif // OPENPOSE__FILESTREAM__JSON_OFSTREAM_HPP
+#endif // OPENPOSE_FILESTREAM_JSON_OFSTREAM_HPP

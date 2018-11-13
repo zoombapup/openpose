@@ -2,10 +2,45 @@
 #include <fstream> // std::ifstream, std::ofstream
 #include <iostream> // std::cout, std::endl
 #include <stdexcept> // std::runtime_error
-#include "openpose/utilities/errorAndLog.hpp"
+#include <openpose/utilities/errorAndLog.hpp>
 
 namespace op
 {
+    #ifdef USE_UNITY_SUPPORT
+        namespace UnityDebugger
+        {
+            typedef void(__stdcall * DebugCallback) (const char* const str, int type);
+            DebugCallback gDebugCallback;
+
+            extern "C" void OP_API OP_RegisterDebugCallback(DebugCallback& debugCallback)
+            {
+                if (debugCallback)
+                    gDebugCallback = debugCallback;
+            }
+
+            void DebugInUnity(const std::string& message, const int type)
+            {
+                if (gDebugCallback)
+                    gDebugCallback(message.c_str(), type);
+            }
+
+            void log(const std::string& message)
+            {
+                DebugInUnity(message, 0);
+            }
+
+            void logWarning(const std::string& message)
+            {
+                DebugInUnity(message, 1);
+            }
+
+            void logError(const std::string& message)
+            {
+                DebugInUnity(message, -1);
+            }
+        }
+    #endif
+
     // Private auxiliar functions
     bool checkIfErrorHas(const ErrorMode errorMode)
     {
@@ -23,8 +58,8 @@ namespace op
         return false;
     }
 
-    std::string createFullMessage(const std::string& message, const int line = -1, const std::string& function = "", const std::string& file = "")
-    // std::string createFullMessage(const std::string& message, const int line, const std::string& function, const std::string& file)
+    std::string createFullMessage(const std::string& message, const int line = -1, const std::string& function = "",
+                                  const std::string& file = "")
     {
         const auto hasMessage = (!message.empty());
         const auto hasLocation = (line != -1 || !function.empty() || !file.empty());
@@ -34,10 +69,14 @@ namespace op
         if (hasMessage)
         {
             fullMessage += message;
-            // // Add dot at the end if the sentence does not finish in a programming file path (this happens when the error is propagated over several error)
+            // // Add dot at the end if the sentence does not finish in a programming file path (this happens when the
+            // error is propagated over several error)
             // if (*message.crbegin() != '.'
             //     && (message.size() < 4
-            //         || (message.substr(message.size() - 4, 4) != ".cpp" && message.substr(message.size() - 4, 4) != ".hpp" && message.substr(message.size() - 4, 4) != ".h" && message.substr(message.size() - 4, 4) != ".c")))
+            //         || (message.substr(message.size() - 4, 4) != ".cpp"
+            //             && message.substr(message.size() - 4, 4) != ".hpp"
+            //             && message.substr(message.size() - 4, 4) != ".h"
+            //             && message.substr(message.size() - 4, 4) != ".c")))
             //     fullMessage += ".";
 
             if (hasLocation)
@@ -74,8 +113,9 @@ namespace op
         // Common
         timeStruct.tm_mon++;
         timeStruct.tm_year += 1900;
-        return std::to_string(timeStruct.tm_year) + '_' + std::to_string(timeStruct.tm_mon) + '_' + std::to_string(timeStruct.tm_mday) + "___"
-               + std::to_string(timeStruct.tm_hour) + '_' + std::to_string(timeStruct.tm_min) + '_' + std::to_string(timeStruct.tm_sec);
+        return std::to_string(timeStruct.tm_year) + '_' + std::to_string(timeStruct.tm_mon)
+               + '_' + std::to_string(timeStruct.tm_mday) + "___" + std::to_string(timeStruct.tm_hour)
+               + '_' + std::to_string(timeStruct.tm_min) + '_' + std::to_string(timeStruct.tm_sec);
     }
 
     void fileLogging(const std::string& message)
@@ -89,7 +129,8 @@ namespace op
 
         // Continue at the end of the file or delete it and re-write it (according to current file size)
         const auto maxLogSize = 15 * 1024 * 1024; // 15 MB
-        std::ofstream loggingFile{fileToOpen, (currentSizeBytes < maxLogSize ? std::ios_base::app : std::ios_base::trunc)};
+        std::ofstream loggingFile{fileToOpen,
+                                  (currentSizeBytes < maxLogSize ? std::ios_base::app : std::ios_base::trunc)};
 
         // Message to write
         loggingFile << getTime();
@@ -116,14 +157,16 @@ namespace op
         // If first error
         if (message.size() < errorInit.size() || message.substr(0, errorInit.size()) != errorInit)
         {
-            errorMessageToPrint = errorInit + createFullMessage(message) + "\n\nComing from:\n" + errorEnum + createFullMessage("", line, function, file);
+            errorMessageToPrint = errorInit + createFullMessage(message) + "\n\nComing from:\n" + errorEnum
+                                + createFullMessage("", line, function, file);
             errorMessageToPropagate = errorMessageToPrint + "\n";
         }
         // If error propagated among different errors
         else
         {
             errorMessageToPrint = errorEnum + createFullMessage("", line, function, file);
-            errorMessageToPropagate = createFullMessage(message.substr(0, message.size()-1)) + "\n" + errorMessageToPrint + "\n";
+            errorMessageToPropagate = createFullMessage(message.substr(0, message.size()-1)) + "\n"
+                                    + errorMessageToPrint + "\n";
         }
 
         // std::cerr
@@ -134,12 +177,18 @@ namespace op
         if (checkIfErrorHas(ErrorMode::FileLogging))
             fileLogging(errorMessageToPrint);
 
+        // Unity logError
+        #ifdef USE_UNITY_SUPPORT
+            UnityDebugger::logError(errorMessageToPrint);
+        #endif
+
         // std::runtime_error
         if (checkIfErrorHas(ErrorMode::StdRuntimeError))
             throw std::runtime_error{errorMessageToPropagate};
     }
 
-    void log(const std::string& message, const Priority priority, const int line, const std::string& function, const std::string& file)
+    void log(const std::string& message, const Priority priority, const int line, const std::string& function,
+             const std::string& file)
     {
         if (priority >= ConfigureLog::getPriorityThreshold())
         {
@@ -152,6 +201,11 @@ namespace op
             // File logging
             if (checkIfLoggingHas(LogMode::FileLogging))
                 fileLogging(infoMessage);
+
+            // Unity log
+            #ifdef USE_UNITY_SUPPORT
+                UnityDebugger::log(infoMessage);
+            #endif
         }
     }
 
@@ -159,52 +213,58 @@ namespace op
 
 
 
-    // ConfigureError - Private variables
-    std::vector<ErrorMode> sErrorModes              {ErrorMode::StdRuntimeError};
-    // std::vector<ErrorMode> sErrorModes              {ErrorMode::StdCerr, ErrorMode::StdRuntimeError};
-    std::mutex sErrorModesMutex                     {};
-
-    std::vector<ErrorMode> ConfigureError::getErrorModes()
+    namespace ConfigureError
     {
-        const std::lock_guard<std::mutex> lock{sErrorModesMutex};
-        return sErrorModes;
+        // ConfigureError - Private variables
+        // std::vector<ErrorMode> sErrorModes              {ErrorMode::StdRuntimeError};
+        std::vector<ErrorMode> sErrorModes              {ErrorMode::StdCerr, ErrorMode::StdRuntimeError};
+        std::mutex sErrorModesMutex                     {};
+
+        std::vector<ErrorMode> getErrorModes()
+        {
+            const std::lock_guard<std::mutex> lock{sErrorModesMutex};
+            return sErrorModes;
+        }
+
+        void setErrorModes(const std::vector<ErrorMode>& errorModes)
+        {
+            const std::lock_guard<std::mutex> lock{sErrorModesMutex};
+            sErrorModes = errorModes;
+        }
     }
 
-    void ConfigureError::setErrorModes(const std::vector<ErrorMode>& errorModes)
+
+
+
+
+    namespace ConfigureLog
     {
-        const std::lock_guard<std::mutex> lock{sErrorModesMutex};
-        sErrorModes = errorModes;
-    }
+        // ConfigureLog - Private variables
+        std::atomic<Priority> sPriorityThreshold        {Priority::High};
+        // std::atomic<Priority> sPriorityThreshold        {Priority::None};
+        std::vector<LogMode> sLoggingModes              {LogMode::StdCout};
+        std::mutex sConfigureLogMutex                   {};
 
+        Priority getPriorityThreshold()
+        {
+            return sPriorityThreshold;
+        }
 
+        const std::vector<LogMode>& getLogModes()
+        {
+            const std::lock_guard<std::mutex> lock{sConfigureLogMutex};
+            return sLoggingModes;
+        }
 
+        void setPriorityThreshold(const Priority priorityThreshold)
+        {
+            sPriorityThreshold = priorityThreshold;
+        }
 
-
-    // ConfigureLog - Private variables
-    std::atomic<Priority> sPriorityThreshold        {Priority::High};
-    // std::atomic<Priority> sPriorityThreshold        {Priority::None};
-    std::vector<LogMode> sLoggingModes              {LogMode::StdCout};
-    std::mutex sConfigureLogMutex                   {};
-
-    Priority ConfigureLog::getPriorityThreshold()
-    {
-        return sPriorityThreshold;
-    }
-
-    const std::vector<LogMode>& ConfigureLog::getLogModes()
-    {
-        const std::lock_guard<std::mutex> lock{sConfigureLogMutex};
-        return sLoggingModes;
-    }
-
-    void ConfigureLog::setPriorityThreshold(const Priority priorityThreshold)
-    {
-        sPriorityThreshold = priorityThreshold;
-    }
-
-    void ConfigureLog::setLogModes(const std::vector<LogMode>& loggingModes)
-    {
-        const std::lock_guard<std::mutex> lock{sConfigureLogMutex};
-        sLoggingModes = loggingModes;
+        void setLogModes(const std::vector<LogMode>& loggingModes)
+        {
+            const std::lock_guard<std::mutex> lock{sConfigureLogMutex};
+            sLoggingModes = loggingModes;
+        }
     }
 }

@@ -1,6 +1,5 @@
-#include "openpose/utilities/errorAndLog.hpp"
-#include "openpose/filestream/fileStream.hpp"
-#include "openpose/filestream/imageSaver.hpp"
+#include <openpose/filestream/fileStream.hpp>
+#include <openpose/filestream/imageSaver.hpp>
 
 namespace op
 {
@@ -19,6 +18,10 @@ namespace op
         }
     }
 
+    ImageSaver::~ImageSaver()
+    {
+    }
+
     void ImageSaver::saveImages(const std::vector<cv::Mat>& cvOutputDatas, const std::string& fileName) const
     {
         try
@@ -31,11 +34,11 @@ namespace op
 
                 // Get names for each image
                 std::vector<std::string> fileNames(cvOutputDatas.size());
-                for (auto i = 0; i < fileNames.size(); i++)
+                for (auto i = 0u; i < fileNames.size(); i++)
                     fileNames[i] = {fileNameNoExtension + (i != 0 ? "_" + std::to_string(i) : "") + "." + mImageFormat};
 
                 // Save each image
-                for (auto i = 0; i < cvOutputDatas.size(); i++)
+                for (auto i = 0u; i < cvOutputDatas.size(); i++)
                     saveImage(cvOutputDatas[i], fileNames[i]);
             }
         }

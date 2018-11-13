@@ -1,50 +1,59 @@
-#include "openpose/utilities/errorAndLog.hpp"
-#include "openpose/utilities/fastMath.hpp"
-#include "openpose/utilities/openCv.hpp"
-#include "openpose/core/cvMatToOpInput.hpp"
+// #include <opencv2/opencv.hpp>
+#include <openpose/utilities/fastMath.hpp>
+#include <openpose/utilities/openCv.hpp>
+#include <openpose/core/cvMatToOpInput.hpp>
 
 namespace op
 {
-    CvMatToOpInput::CvMatToOpInput(const cv::Size& netInputResolution, const int scaleNumber, const float scaleGap) :
-        mScaleNumber{scaleNumber},
-        mScaleGap{scaleGap},
-        mInputNetSize4D{{mScaleNumber, 3, netInputResolution.height, netInputResolution.width}}
+    CvMatToOpInput::CvMatToOpInput(const PoseModel poseModel) :
+        mPoseModel{poseModel}
     {
     }
 
-    Array<float> CvMatToOpInput::format(const cv::Mat& cvInputData) const
+    CvMatToOpInput::~CvMatToOpInput()
+    {
+    }
+
+    std::vector<Array<float>> CvMatToOpInput::createArray(const cv::Mat& cvInputData,
+                                                          const std::vector<double>& scaleInputToNetInputs,
+                                                          const std::vector<Point<int>>& netInputSizes) const
     {
         try
         {
-            // Security checks
+            // Sanity checks
             if (cvInputData.empty())
                 error("Wrong input element (empty cvInputData).", __LINE__, __FUNCTION__, __FILE__);
-
+            if (cvInputData.channels() != 3)
+                error("Input images must be 3-channel BGR.", __LINE__, __FUNCTION__, __FILE__);
+            if (scaleInputToNetInputs.size() != netInputSizes.size())
+                error("scaleInputToNetInputs.size() != netInputSizes.size().", __LINE__, __FUNCTION__, __FILE__);
             // inputNetData - Reescale keeping aspect ratio and transform to float the input deep net image
-            Array<float> inputNetData{mInputNetSize4D};
-            const auto inputNetDataOffset = inputNetData.getVolume(1, 3);
-            for (auto i = 0; i < mScaleNumber; i++)
+            const auto numberScales = (int)scaleInputToNetInputs.size();
+            std::vector<Array<float>> inputNetData(numberScales);
+            for (auto i = 0u ; i < inputNetData.size() ; i++)
             {
-                const auto requestedScale = 1.f - i*mScaleGap;
-                if (requestedScale > 1.f)
-                    error("All scales must be <= 1, i.e. 1-num_scales*scale_gap <= 1", __LINE__, __FUNCTION__, __FILE__);
-
-                const auto netInputWidth = inputNetData.getSize(3);
-                const auto targetWidth  = fastTruncate(16 * intRound(netInputWidth * requestedScale / 16.), 1, netInputWidth/16*16);
-                const auto netInputHeight = inputNetData.getSize(2);
-                const auto targetHeight  = fastTruncate(16 * intRound(netInputHeight * requestedScale / 16.), 1, netInputHeight/16*16);
-                const cv::Size targetSize{targetWidth, targetHeight};
-                const auto scale = resizeGetScaleFactor(cvInputData.size(), targetSize);
-                const cv::Mat frameWithNetSize = resizeFixedAspectRatio(cvInputData, scale, cv::Size{netInputWidth, netInputHeight});
-                uCharCvMatToFloatPtr(inputNetData.getPtr() + i * inputNetDataOffset, frameWithNetSize, true);
+                cv::Mat frameWithNetSize;
+                resizeFixedAspectRatio(frameWithNetSize, cvInputData, scaleInputToNetInputs[i], netInputSizes[i]);
+                // Fill inputNetData[i]
+                inputNetData[i].reset({1, 3, netInputSizes.at(i).y, netInputSizes.at(i).x});
+                uCharCvMatToFloatPtr(inputNetData[i].getPtr(), frameWithNetSize,
+                                     (mPoseModel == PoseModel::BODY_19N ? 2 : 1));
+                // // OpenCV equivalent
+                // const auto scale = 1/255.;
+                // const cv::Scalar mean{128,128,128};
+                // const cv::Size outputSize{netInputSizes[i].x, netInputSizes[i].y};
+                // // cv::Mat cvMat;
+                // cv::dnn::blobFromImage(
+                //     // frameWithNetSize, cvMat, scale, outputSize, mean);
+                //     frameWithNetSize, inputNetData[i].getCvMat(), scale, outputSize, mean);
+                // // log(cv::norm(cvMat - inputNetData[i].getCvMat())); // ~0.25
             }
-
             return inputNetData;
         }
         catch (const std::exception& e)
         {
             error(e.what(), __LINE__, __FUNCTION__, __FILE__);
-            return Array<float>{};
+            return {};
         }
     }
 }

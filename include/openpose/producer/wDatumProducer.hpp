@@ -1,10 +1,11 @@
-#ifndef OPENPOSE__PRODUCER__W_DATUM_PRODUCER_HPP
-#define OPENPOSE__PRODUCER__W_DATUM_PRODUCER_HPP
+#ifndef OPENPOSE_PRODUCER_W_DATUM_PRODUCER_HPP
+#define OPENPOSE_PRODUCER_W_DATUM_PRODUCER_HPP
 
 #include <limits> // std::numeric_limits
-#include <memory> // std::shared_ptr
-#include "../thread/workerProducer.hpp"
-#include "datumProducer.hpp"
+#include <queue> // std::queue
+#include <openpose/core/common.hpp>
+#include <openpose/producer/datumProducer.hpp>
+#include <openpose/thread/workerProducer.hpp>
 
 namespace op
 {
@@ -14,12 +15,15 @@ namespace op
     public:
         explicit WDatumProducer(const std::shared_ptr<DatumProducer<TDatumsNoPtr>>& datumProducer);
 
+        virtual ~WDatumProducer();
+
         void initializationOnThread();
 
         TDatums workProducer();
 
     private:
         std::shared_ptr<DatumProducer<TDatumsNoPtr>> spDatumProducer;
+        std::queue<TDatums> mQueuedElements;
 
         DELETE_COPY(WDatumProducer);
     };
@@ -30,11 +34,7 @@ namespace op
 
 
 // Implementation
-#include <vector>
-#include "../utilities/errorAndLog.hpp"
-#include "../utilities/macros.hpp"
-#include "../utilities/profiler.hpp"
-#include "../core/datum.hpp"
+#include <openpose/core/datum.hpp>
 namespace op
 {
     template<typename TDatums, typename TDatumsNoPtr>
@@ -42,6 +42,12 @@ namespace op
         spDatumProducer{datumProducer}
     {
     }
+
+    template<typename TDatums, typename TDatumsNoPtr>
+    WDatumProducer<TDatums, TDatumsNoPtr>::~WDatumProducer()
+    {
+    }
+
 
     template<typename TDatums, typename TDatumsNoPtr>
     void WDatumProducer<TDatums, TDatumsNoPtr>::initializationOnThread()
@@ -58,17 +64,43 @@ namespace op
             // Profiling speed
             const auto profilerKey = Profiler::timerInit(__LINE__, __FUNCTION__, __FILE__);
             // Create and fill TDatums
-            const auto isRunningAndTDatums = spDatumProducer->checkIfRunningAndGetDatum();
-            // Stop Worker if producer finished
-            if (!isRunningAndTDatums.first)
-                this->stop();
-            // Profiling speed
-            Profiler::timerEnd(profilerKey);
-            Profiler::printAveragedTimeMsOnIterationX(profilerKey, __LINE__, __FUNCTION__, __FILE__, 1000);
-            // Debugging log
-            dLog("", Priority::Low, __LINE__, __FUNCTION__, __FILE__);
+            std::shared_ptr<TDatumsNoPtr> tDatums;
+            // Producer
+            if (mQueuedElements.empty())
+            {
+                bool isRunning;
+                std::tie(isRunning, tDatums) = spDatumProducer->checkIfRunningAndGetDatum();
+                // Stop Worker if producer finished
+                if (!isRunning)
+                    this->stop();
+                // Profiling speed
+                Profiler::timerEnd(profilerKey);
+                Profiler::printAveragedTimeMsOnIterationX(profilerKey, __LINE__, __FUNCTION__, __FILE__);
+                // Debugging log
+                dLog("", Priority::Low, __LINE__, __FUNCTION__, __FILE__);
+            }
+            // Equivalent to WQueueSplitter
+            // Queued elements - Multiple views --> Split views into different TDatums
+            if (tDatums != nullptr && tDatums->size() > 1)
+            {
+                // Add tDatums to mQueuedElements
+                for (auto i = 0u ; i < tDatums->size() ; i++)
+                {
+                    auto& tDatum = (*tDatums)[i];
+                    tDatum.subId = i;
+                    tDatum.subIdMax = tDatums->size()-1;
+                    mQueuedElements.emplace(
+                        std::make_shared<TDatumsNoPtr>(TDatumsNoPtr{tDatum}));
+                }
+            }
+            // Queued elements - Multiple views --> Return oldest view
+            if (!mQueuedElements.empty())
+            {
+                tDatums = mQueuedElements.front();
+                mQueuedElements.pop();
+            }
             // Return TDatums
-            return isRunningAndTDatums.second;
+            return tDatums;
         }
         catch (const std::exception& e)
         {
@@ -81,4 +113,4 @@ namespace op
     extern template class WDatumProducer<DATUM_BASE, DATUM_BASE_NO_PTR>;
 }
 
-#endif // OPENPOSE__PRODUCER__W_DATUM_PRODUCER_HPP
+#endif // OPENPOSE_PRODUCER_W_DATUM_PRODUCER_HPP

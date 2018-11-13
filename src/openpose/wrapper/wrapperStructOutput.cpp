@@ -1,23 +1,36 @@
-#include "openpose/wrapper/wrapperStructOutput.hpp"
+#include <openpose/wrapper/wrapperStructOutput.hpp>
 
 namespace op
 {
-    WrapperStructOutput::WrapperStructOutput(const bool displayGui_, const bool guiVerbose_, const bool fullScreen_, const std::string& writePose_,
-                                             const DataFormat writePoseDataFormat_, const std::string& writePoseJson_, const std::string& writeCocoJson_,
-                                             const std::string& writeImages_, const std::string& writeImagesFormat_, const std::string& writeVideo_,
-                                             const std::string& writeHeatMaps_, const std::string& writeHeatMapsFormat_) :
-        displayGui{displayGui_},
+    WrapperStructOutput::WrapperStructOutput(const DisplayMode displayMode_, const bool guiVerbose_,
+                                             const bool fullScreen_, const std::string& writeKeypoint_,
+                                             const DataFormat writeKeypointFormat_, const std::string& writeJson_,
+                                             const std::string& writeCocoJson_, const std::string& writeCocoFootJson_,
+                                             const int writeCocoJsonVariant_, const std::string& writeImages_,
+                                             const std::string& writeImagesFormat_, const std::string& writeVideo_,
+                                             const double writeVideoFps_, const std::string& writeHeatMaps_,
+                                             const std::string& writeHeatMapsFormat_,
+                                             const std::string& writeVideoAdam_, const std::string& writeBvh_,
+                                             const std::string& udpHost_, const std::string& udpPort_) :
+        displayMode{displayMode_},
         guiVerbose{guiVerbose_},
         fullScreen{fullScreen_},
-        writePose{writePose_},
-        writePoseDataFormat{writePoseDataFormat_},
-        writePoseJson{writePoseJson_},
+        writeKeypoint{writeKeypoint_},
+        writeKeypointFormat{writeKeypointFormat_},
+        writeJson{writeJson_},
         writeCocoJson{writeCocoJson_},
+        writeCocoFootJson{writeCocoFootJson_},
+        writeCocoJsonVariant{writeCocoJsonVariant_},
         writeImages{writeImages_},
         writeImagesFormat{writeImagesFormat_},
         writeVideo{writeVideo_},
         writeHeatMaps{writeHeatMaps_},
-        writeHeatMapsFormat{writeHeatMapsFormat_}
+        writeHeatMapsFormat{writeHeatMapsFormat_},
+        writeVideoFps{writeVideoFps_},
+        writeVideoAdam{writeVideoAdam_},
+        writeBvh{writeBvh_},
+        udpHost{udpHost_},
+        udpPort{udpPort_}
     {
     }
 }
